@@ -1,0 +1,194 @@
+{
+  "name": "WORKFLOW_OFICIAL",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "honey-trap-access",
+        "options": {}
+      },
+      "name": "Webhook_Trap",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -704,
+        160
+      ],
+      "id": "908ab287-020e-4795-8dfe-0f205922273f",
+      "webhookId": "6b64ee31-ce8f-435c-8170-1b74db5fdc80"
+    },
+    {
+      "parameters": {
+        "jsCode": "const headers = items[0].json.headers;\nconst ua = headers['user-agent'] || \"N/A\";\n\nlet risk = \"BAJO\"; // Nivel por defecto para curiosos\n\n// Si usa herramientas de hacking -> CRITICO\nif (ua.toLowerCase().includes(\"sqlmap\") || ua.toLowerCase().includes(\"nmap\")) {\n  risk = \"CRITICO\";\n} \n// Si es un POST pero no parece ataque (opcional, podrías dejarlo en BAJO)\nelse if (ua.includes(\"Mozilla\") || ua.includes(\"iPhone\")) {\n  risk = \"BAJO\";\n}\n\nreturn {\n  ip: headers['x-forwarded-for'] || \"127.0.0.1\",\n  user_agent: ua,\n  severity: risk,\n  timestamp: new Date().toISOString()\n};"
+      },
+      "name": "Analisis_Riesgo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        160
+      ],
+      "id": "9b584ff6-79fb-4cd6-bba3-41b13d4a23b2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.severity }}",
+              "value2": "CRITICO"
+            }
+          ]
+        }
+      },
+      "name": "Es_Incidente_Claro",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -256,
+        160
+      ],
+      "id": "d1deb4b8-83de-4c9e-8d7c-0771679ef1f6"
+    },
+    {
+      "parameters": {
+        "chatId": "1190607431",
+        "text": "=🚨 *ALERTA DE SEGURIDAD - INCIDENTE CRÍTICO*\n───────────────────\n📢 *Evento:* Intrusión detectada en Honey-Trap\n🏷 *Criticidad:* {{ $json.severity }}\n📡 *Origen (IP):* `{{ $json.ip }}`\n🛠 *Herramienta:* {{ $json.user_agent }}\n\n🕒 *Timestamp:* {{ $json.timestamp }}\n📋 *Acción:* Registro en DB completado y escalado a MailHog.\n\n⚠️ *Acción Recomendada:* Bloquear IP en el Firewall perimetral y revisar logs de acceso en PostgreSQL.\n───────────────────\n_Enviado automáticamente por el Sistema de Detección n8n_",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Telegram_Alerta",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "1055663e-fb99-41eb-a75b-3d762dda3223",
+      "webhookId": "823a46e6-5fc4-46fa-baeb-65a4f53adf94",
+      "credentials": {
+        "telegramApi": {
+          "id": "NJA3YOMC2pl81cMq",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "soc@cib.local",
+        "toEmail": "admin@cib.local",
+        "subject": "=[ALERTA CRITICA] Intrusion en Honey-Trap",
+        "options": {}
+      },
+      "name": "MailHog_Urgente",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        224,
+        0
+      ],
+      "id": "c909c3ad-aca5-41fc-b2b6-40eecd486902",
+      "webhookId": "3f22e196-29f0-4b73-a066-98a3fd2b4083",
+      "credentials": {
+        "smtp": {
+          "id": "y7wnfhzCdtJxgsMU",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO incidentes (ip, agente, nivel, fecha) VALUES ('{{ $json.ip }}', '{{ $json.user_agent }}', '{{ $json.severity }}', '{{ $json.timestamp }}');",
+        "options": {}
+      },
+      "name": "Postgres_Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        304
+      ],
+      "id": "623a37a0-ac58-4d8a-b40c-c336c0fdb5e3",
+      "credentials": {
+        "postgres": {
+          "id": "4CsTQJl4igmQRVuL",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook_Trap": {
+      "main": [
+        [
+          {
+            "node": "Analisis_Riesgo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analisis_Riesgo": {
+      "main": [
+        [
+          {
+            "node": "Es_Incidente_Claro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Es_Incidente_Claro": {
+      "main": [
+        [
+          {
+            "node": "Telegram_Alerta",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Postgres_Log",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Postgres_Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram_Alerta": {
+      "main": [
+        [
+          {
+            "node": "MailHog_Urgente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "65b7ab13-2753-4532-9bf4-6f12fdf46109",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8a166e8f3ec118535900a9a6dedb446babeb148567df7e4420f980c0f1325a40"
+  },
+  "id": "NZsuVcqQhBgEID2d",
+  "tags": []
+}
