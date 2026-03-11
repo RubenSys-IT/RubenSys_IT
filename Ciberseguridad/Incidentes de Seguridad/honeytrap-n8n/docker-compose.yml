@@ -5,8 +5,8 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_DB: n8n_db
-      POSTGRES_USER: n8n_user
-      POSTGRES_PASSWORD: n8n_pass
+      POSTGRES_USER: 
+      POSTGRES_PASSWORD: 
       TZ: Europe/Madrid
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -31,8 +31,8 @@ services:
       - DB_POSTGRESDB_HOST=postgres
       - DB_POSTGRESDB_PORT=5432
       - DB_POSTGRESDB_DATABASE=n8n_db
-      - DB_POSTGRESDB_USER=n8n_user
-      - DB_POSTGRESDB_PASSWORD=n8n_pass
+      - DB_POSTGRESDB_USER=
+      - DB_POSTGRESDB_PASSWORD=
       - N8N_BASIC_AUTH_ACTIVE=true
       - N8N_BASIC_AUTH_USER=admin
       - N8N_BASIC_AUTH_PASSWORD=admin123
