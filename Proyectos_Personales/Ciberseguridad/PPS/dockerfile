@@ -1,0 +1,9 @@
+FROM php:8.2-apache
+
+RUN useradd -m rrodgar1602
+
+COPY . /var/www/html
+
+RUN chown -R rrodgar1602:rrodgar1602 /var/www/html
+
+USER rrodgar1602
