@@ -1,0 +1,2 @@
+# Este directorio es el volumen mapeado desde el contenedor n8n.
+# El fichero honeytrap.log se creará automáticamente aquí al primer incidente crítico.
