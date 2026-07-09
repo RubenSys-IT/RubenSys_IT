@@ -1,0 +1,13 @@
+# Ignorar logs generados por el laboratorio (¡Fundamental para Tetragon!)
+*.log
+tetragon/audit-kernel-events.log
+
+# Ignorar archivos de configuración local que contengan credenciales
+ansible/inventory.ini
+.env
+
+# Ignorar archivos temporales del sistema y entornos de desarrollo
+.vscode/
+.idea/
+*.swp
+Thumbs.db
