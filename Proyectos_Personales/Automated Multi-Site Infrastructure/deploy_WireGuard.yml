@@ -1,0 +1,205 @@
+---
+# ==============================================================================
+# PLAY 1: GENERACIÓN DE CLAVES Y CREACIÓN DE PEERS (SIN VINCULAR AÚN)
+# ==============================================================================
+- name: "Paso 1: Generar Criptografía e Intercambiar Peers"
+  hosts: all
+  gather_facts: false
+  connection: local
+
+  tasks:
+    - name: "Generar clave privada WireGuard"
+      ansible.builtin.command: "wg genkey"
+      register: wg_private_key_raw
+      changed_when: false
+
+    - name: "Derivar clave pública WireGuard"
+      ansible.builtin.command: "wg pubkey"
+      args:
+        stdin: "{{ wg_private_key_raw.stdout }}"
+      register: wg_public_key_raw
+      changed_when: false
+
+
+# ==============================================================================
+# PLAY 2: CREACIÓN DE OBJETOS EN HQ_FIREWALL
+# ==============================================================================
+- name: "Paso 2: Configurar HQ_Firewall"
+  hosts: HQ_Firewall
+  gather_facts: false
+  connection: local
+
+  tasks:
+    - name: "HQ - Registrar Peer Sede B"
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}/api/wireguard/client/addClient"
+        method: POST
+        user: "{{ opnsense_api_key }}"
+        password: "{{ opnsense_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: 200
+        body_format: json
+        body:
+          client:
+            enabled: "1"
+            name: "Peer_SedeB"
+            pubkey: "{{ hostvars['SedeB_Firewall']['wg_public_key_raw']['stdout'] }}"
+            tunneladdress: "{{ hostvars['SedeB_Firewall']['sedeb_tunnel_ip'] }}/32,{{ hostvars['SedeB_Firewall']['sedeb_lan_subnet'] }}"
+            serveraddress: "{{ hostvars['SedeB_Firewall']['ansible_host'] }}"
+            serverport: "{{ hostvars['SedeB_Firewall']['wg_port'] | default('51820') }}"
+            keepalive: "{{ wg_keepalive | default('25') }}"
+      register: hq_peer_result
+
+    - name: "HQ - Instanciar Servidor WireGuard y Vincular Peer Sede B"
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}/api/wireguard/server/addServer"
+        method: POST
+        user: "{{ opnsense_api_key }}"
+        password: "{{ opnsense_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: 200
+        body_format: json
+        body:
+          server:
+            enabled: "1"
+            name: "WG_Overlay_HQ"
+            port: "{{ wg_port | default('51820') }}"
+            tunneladdress: "{{ hq_tunnel_address }}"
+            privkey: "{{ wg_private_key_raw.stdout }}"
+            pubkey: "{{ wg_public_key_raw.stdout }}"
+            peers: "{{ hq_peer_result.json.uuid }}"
+
+    - name: "HQ - Aplicar Configuración en el Kernel"
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}/api/wireguard/service/reconfigure"
+        method: POST
+        user: "{{ opnsense_api_key }}"
+        password: "{{ opnsense_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: 200
+        body_format: json
+        body: {}
+
+    - name: "HQ - Crear Ruta Estática hacia LAN de Sede B"
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}/api/routes/routes/addRoute"
+        method: POST
+        user: "{{ opnsense_api_key }}"
+        password: "{{ opnsense_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: 200
+        body_format: json
+        body:
+          route:
+            disabled: "0"
+            network: "{{ hostvars['SedeB_Firewall']['sedeb_lan_subnet'] }}"
+            gateway: "{{ hostvars['SedeB_Firewall']['sedeb_tunnel_ip'] }}"
+            descr: "Ruta LAN Sede B via WG"
+
+    - name: "HQ - Aplicar Rutas Estáticas"
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}/api/routes/routes/reconfigure"
+        method: POST
+        user: "{{ opnsense_api_key }}"
+        password: "{{ opnsense_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: 200
+        body_format: json
+        body: {}
+
+
+# ==============================================================================
+# PLAY 3: CREACIÓN DE OBJETOS EN SEDEB_FIREWALL
+# ==============================================================================
+- name: "Paso 3: Configurar SedeB_Firewall"
+  hosts: SedeB_Firewall
+  gather_facts: false
+  connection: local
+
+  tasks:
+    - name: "Sede B - Registrar Peer HQ Central"
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}/api/wireguard/client/addClient"
+        method: POST
+        user: "{{ sedeB_api_key }}"
+        password: "{{ sedeB_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: 200
+        body_format: json
+        body:
+          client:
+            enabled: "1"
+            name: "Peer_HQ_Central"
+            pubkey: "{{ hostvars['HQ_Firewall']['wg_public_key_raw']['stdout'] }}"
+            tunneladdress: "{{ hostvars['HQ_Firewall']['hq_tunnel_ip'] }}/32,{{ hostvars['HQ_Firewall']['hq_lan_subnet'] }}"
+            serveraddress: "{{ hostvars['HQ_Firewall']['ansible_host'] }}"
+            serverport: "{{ hostvars['HQ_Firewall']['wg_port'] | default('51820') }}"
+            keepalive: "{{ wg_keepalive | default('25') }}"
+      register: sedeb_peer_result
+
+    - name: "Sede B - Instanciar Servidor WireGuard y Vincular Peer HQ"
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}/api/wireguard/server/addServer"
+        method: POST
+        user: "{{ sedeB_api_key }}"
+        password: "{{ sedeB_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: 200
+        body_format: json
+        body:
+          server:
+            enabled: "1"
+            name: "WG_Overlay_SedeB"
+            port: "{{ wg_port | default('51820') }}"
+            tunneladdress: "{{ sedeb_tunnel_address }}"
+            privkey: "{{ wg_private_key_raw.stdout }}"
+            pubkey: "{{ wg_public_key_raw.stdout }}"
+            peers: "{{ sedeb_peer_result.json.uuid }}"
+
+    - name: "Sede B - Aplicar Configuración en el Kernel"
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}/api/wireguard/service/reconfigure"
+        method: POST
+        user: "{{ sedeB_api_key }}"
+        password: "{{ sedeB_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: 200
+        body_format: json
+        body: {}
+
+    - name: "Sede B - Crear Ruta Estática hacia LAN de HQ"
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}/api/routes/routes/addRoute"
+        method: POST
+        user: "{{ sedeB_api_key }}"
+        password: "{{ sedeB_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: 200
+        body_format: json
+        body:
+          route:
+            disabled: "0"
+            network: "{{ hostvars['HQ_Firewall']['hq_lan_subnet'] }}"
+            gateway: "{{ hostvars['HQ_Firewall']['hq_tunnel_ip'] }}"
+            descr: "Ruta LAN HQ via WG"
+
+    - name: "Sede B - Aplicar Rutas Estáticas"
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}/api/routes/routes/reconfigure"
+        method: POST
+        user: "{{ sedeB_api_key }}"
+        password: "{{ sedeB_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: 200
+        body_format: json
+        body: {}

@@ -1,0 +1,71 @@
+---
+- name: Step 4.1 - Dynamic eBGP Provisioning via FRR API
+  hosts: firewalls
+  gather_facts: no
+  connection: local
+  vars_files:
+    - group_vars/all/vault.yml
+
+  # Mapeo usando los nombres EXACTOS de tu vault.yml
+  vars:
+    api_key_actual: "{{ opnsense_api_key if inventory_hostname == 'HQ_Firewall' else sedeB_api_key }}"
+    api_secret_actual: "{{ opnsense_api_secret if inventory_hostname == 'HQ_Firewall' else sedeB_api_secret }}"
+
+  tasks:
+    - name: Enable FRR General Service
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}/api/quagga/general/set"
+        method: POST
+        user: "{{ api_key_actual }}"
+        password: "{{ api_secret_actual }}"
+        force_basic_auth: yes
+        status_code: 200
+        validate_certs: no
+        body_format: json
+        body:
+          general:
+            enabled: "1"
+
+    - name: Configure BGP General Settings & Local Network
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}/api/quagga/bgp/set"
+        method: POST
+        user: "{{ api_key_actual }}"
+        password: "{{ api_secret_actual }}"
+        force_basic_auth: yes
+        status_code: 200
+        validate_certs: no
+        body_format: json
+        body:
+          bgp:
+            enabled: "1"
+            as: "{{ bgp_asn }}"
+            routerid: "{{ bgp_router_id }}"
+            networks: "{{ bgp_network }}"
+
+    - name: Add BGP Neighbor Endpoint
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}/api/quagga/bgp/addNeighbor"
+        method: POST
+        user: "{{ api_key_actual }}"
+        password: "{{ api_secret_actual }}"
+        force_basic_auth: yes
+        status_code: 200
+        validate_certs: no
+        body_format: json
+        body:
+          neighbor:
+            enabled: "1"
+            address: "{{ neighbor_ip }}"
+            remoteas: "{{ neighbor_asn }}"
+            description: "{{ neighbor_description }}"
+
+    - name: Apply FRR Configuration & Reload Routing Engine
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}/api/quagga/service/reconfigure"
+        method: POST
+        user: "{{ api_key_actual }}"
+        password: "{{ api_secret_actual }}"
+        force_basic_auth: yes
+        status_code: 200
+        validate_certs: no
